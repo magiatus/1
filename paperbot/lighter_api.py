@@ -14,8 +14,9 @@ MAX_CANDLES = 500
 
 
 class LighterAPI:
-    def __init__(self, base_url=BASE_URL, min_interval=1.1, timeout=20, retries=5):
-        # Standard-Limit ohne Anmeldung: 60 REST-Anfragen pro Minute und IP.
+    def __init__(self, base_url=BASE_URL, min_interval=1.02, timeout=20, retries=5):
+        # Standard-Limit ohne Anmeldung: 60 REST-Anfragen pro Minute und IP. Der Abstand
+        # zählt ab Beginn der Anfrage, damit die Antwortzeit nicht noch dazukommt.
         self.base_url = base_url
         self.min_interval = min_interval
         self.timeout = timeout
@@ -29,15 +30,14 @@ class LighterAPI:
             wait = self._last + self.min_interval - time.monotonic()
             if wait > 0:
                 time.sleep(wait)
+            self._last = time.monotonic()
             try:
                 with urllib.request.urlopen(url, timeout=self.timeout) as resp:
                     data = json.load(resp)
-                self._last = time.monotonic()
                 if data.get("code", 200) != 200:
                     raise RuntimeError(f"Antwortcode {data.get('code')}: {data.get('message', '')}")
                 return data
             except (OSError, ValueError, RuntimeError) as e:
-                self._last = time.monotonic()
                 err = e
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"Lighter-API nicht erreichbar ({url}): {err}")
