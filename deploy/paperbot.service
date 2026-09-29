@@ -1,0 +1,17 @@
+[Unit]
+Description=Paperbot Lighter (Papierhandel, keine echten Orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=administrator
+WorkingDirectory=/opt/paperbot
+ExecStart=/usr/bin/python3 -u -m paperbot --symbols all --equity 1000 --data-dir /opt/paperbot/data
+Restart=on-failure
+RestartSec=30
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
