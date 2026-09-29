@@ -4,6 +4,7 @@ import unittest
 from datetime import date
 
 from paperbot.bot import Bot, Store, parse_args
+from paperbot.lighter_api import LighterAPI
 from paperbot.paper import PaperAccount, fill_price, funding_cost
 from paperbot.strategy import BAR_MS, Bar, NoiseBand, SessionSpec, decide, vwap
 
@@ -101,6 +102,10 @@ class PaperTests(unittest.TestCase):
         f = [(2, 1.0, "long"), (3, 0.5, "short")]
         self.assertAlmostEqual(funding_cost(1, 2.0, f, 0, 10), 2.0 - 1.0)
         self.assertAlmostEqual(funding_cost(-1, 2.0, f, 0, 10), -2.0 + 1.0)
+
+    def test_no_funding_call_within_one_hour(self):
+        api = LighterAPI(base_url="http://127.0.0.1:9")   # jeder echte Abruf würde scheitern
+        self.assertEqual(api.fundings(1, 3_600_000 + 1, 7_199_999), [])
 
     def test_pnl(self):
         acc = PaperAccount(1000.0)

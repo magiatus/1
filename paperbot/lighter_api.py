@@ -4,6 +4,7 @@ Nur öffentliche Endpunkte: keine Schlüssel, keine Orders.
 """
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -11,10 +12,12 @@ from .strategy import BAR_MS, RESOLUTION, Bar
 
 BASE_URL = "https://mainnet.zklighter.elliot.ai/api/v1"
 MAX_CANDLES = 500
+HOUR_MS = 3_600_000
+RATE_LIMIT_COOLDOWN = 61  # Sekunden; Lighter sperrt bei Überschreitung bis zu 60 s
 
 
 class LighterAPI:
-    def __init__(self, base_url=BASE_URL, min_interval=1.02, timeout=20, retries=5):
+    def __init__(self, base_url=BASE_URL, min_interval=1.1, timeout=20, retries=5):
         # Standard-Limit ohne Anmeldung: 60 REST-Anfragen pro Minute und IP. Der Abstand
         # zählt ab Beginn der Anfrage, damit die Antwortzeit nicht noch dazukommt.
         self.base_url = base_url
@@ -34,9 +37,21 @@ class LighterAPI:
             try:
                 with urllib.request.urlopen(url, timeout=self.timeout) as resp:
                     data = json.load(resp)
+                if data.get("code") == 23000:  # "Too Many Requests" im Antworttext
+                    err = RuntimeError("Rate-Limit erreicht")
+                    time.sleep(RATE_LIMIT_COOLDOWN)
+                    continue
                 if data.get("code", 200) != 200:
                     raise RuntimeError(f"Antwortcode {data.get('code')}: {data.get('message', '')}")
                 return data
+            except urllib.error.HTTPError as e:
+                err = e
+                if e.code in (405, 429):
+                    time.sleep(RATE_LIMIT_COOLDOWN)
+                elif 400 <= e.code < 500:
+                    break  # fehlerhafte Anfrage: Wiederholen hilft nicht
+                else:
+                    time.sleep(2 ** attempt)
             except (OSError, ValueError, RuntimeError) as e:
                 err = e
                 time.sleep(2 ** attempt)
@@ -73,9 +88,12 @@ class LighterAPI:
 
     def fundings(self, market_id, start_ms, end_ms):
         """Stündliche Funding-Zahlungen im Zeitraum, als Liste von (Zeit in ms, USD je Coin, zahlende Seite)."""
+        if end_ms // HOUR_MS <= start_ms // HOUR_MS:
+            return []  # keine volle Stunde dazwischen, also keine Zahlung
         data = self._get(
             "fundings", market_id=market_id, resolution="1h",
-            start_timestamp=start_ms, end_timestamp=end_ms, count_back=750,
+            start_timestamp=start_ms // HOUR_MS * HOUR_MS, end_timestamp=-(-end_ms // HOUR_MS) * HOUR_MS,
+            count_back=750,
         )
         out = []
         for f in data.get("fundings", []):
