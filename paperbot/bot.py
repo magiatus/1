@@ -437,6 +437,8 @@ def parse_args(argv=None):
     p.add_argument("--all-days", action="store_true", help="auch Samstag und Sonntag handeln")
     p.add_argument("--data-dir", default="data", help="Ordner für Zustand, Trades und Log")
     p.add_argument("--poll", type=float, default=30.0, help="Sekunden zwischen zwei Prüfungen")
+    p.add_argument("--api-interval", type=float, default=1.1,
+                   help="Sekunden zwischen zwei API-Abrufen; bei zwei Bots auf einer IP jeweils 2.2")
     p.add_argument("--once", action="store_true", help="Vorlauf laden, Status zeigen, beenden")
     return p.parse_args(argv)
 
@@ -455,7 +457,7 @@ def select_markets(markets, symbols):
 def main(argv=None):
     cfg = parse_args(argv)
     store = Store(cfg.data_dir)
-    api = LighterAPI()
+    api = LighterAPI(min_interval=cfg.api_interval)
     bot = Bot(api, select_markets(api.markets(), cfg.symbols), cfg, store)
     bot.warmup(now_ms())
     if cfg.once:
