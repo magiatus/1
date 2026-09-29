@@ -44,8 +44,10 @@ python3 -m paperbot --symbols all --equity 1000
 python3 -m paperbot --symbols BTC,ETH,SOL
 ```
 
-Beim Start lädt der Bot die letzten 15 Sessions als Vorlauf, weil das Rauschband sie braucht. Bei allen Märkten
-dauert das wegen des API-Limits (60 Abrufe pro Minute) etwa 12 Minuten. Rückwirkend gehandelt wird nichts.
+Beim Start lädt der Bot die letzten 15 Sessions als Vorlauf, weil das Rauschband sie braucht. Rückwirkend
+gehandelt wird nichts. Bei allen Märkten sind das 2 Abrufe je Markt; bei 60 Abrufen pro Minute dauert der erste
+Start knapp 8 Minuten. Danach liegen die Kerzen in `data/cache/`: Ein Neustart am selben Tag braucht keinen Abruf,
+am nächsten Tag 1 Abruf je Markt (knapp 4 Minuten).
 
 Alle Einstellungen: `python3 -m paperbot --help`
 
