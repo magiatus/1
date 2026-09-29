@@ -36,8 +36,10 @@ class FakeAPI:
         self.bars = {1: history_bars() + day_bars(TODAY, today_closes),
                      2: history_bars() + day_bars(TODAY, [100.0] * BARS_PER_DAY)}
         self.price = {"BTC": 100.0, "ETH": 100.0}
+        self.candle_calls = 0
 
     def candles(self, market_id, start, end):
+        self.candle_calls += 1
         return [b for b in self.bars[market_id] if start <= b.t < end]
 
     def order_book(self, market_id, limit=100):
@@ -73,6 +75,16 @@ class StrategyTests(unittest.TestCase):
             upper, lower = NoiseBand().bands(hist, 100.0, 101.0, 30)
             self.assertAlmostEqual(upper, 101.0 * 1.01)
             self.assertAlmostEqual(lower, 100.0 * 0.99)
+
+    def test_second_warmup_uses_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            api = FakeAPI([100.0] * BARS_PER_DAY)
+            Bot(api, MARKETS, parse_args([]), Store(tmp)).warmup(SPEC.bounds(TODAY)[0])
+            calls = api.candle_calls
+            again = Bot(api, MARKETS, parse_args([]), Store(tmp))
+            again.warmup(SPEC.bounds(TODAY)[0])
+            self.assertEqual(api.candle_calls, calls)
+            self.assertEqual(len(again.markets["BTC"].history), 15)
 
     def test_vwap(self):
         bars = [Bar(0, 1, 1, 1, 10, 1, 10), Bar(BAR_MS, 1, 1, 1, 20, 3, 60)]

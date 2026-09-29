@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from .lighter_api import LighterAPI
 from .paper import PaperAccount, fill_price, funding_cost
-from .strategy import (BAR_MS, DayData, NoiseBand, SessionSpec, closed_bars,
+from .strategy import (BAR_MS, Bar, DayData, NoiseBand, SessionSpec, closed_bars,
                        decide, position_notional, vwap)
 
 TRADE_FIELDS = ["symbol", "day", "side", "entry_time", "entry_price", "exit_time", "exit_price", "qty",
@@ -80,6 +80,27 @@ class Store:
 
     def stop_requested(self):
         return (self.dir / "STOP").exists()
+
+    def _cache_file(self, market_id):
+        return self.dir / "cache" / f"{market_id}.json"
+
+    def load_bars(self, market_id):
+        """(von, bis, Kerzen) aus dem Zwischenspeicher oder None."""
+        f = self._cache_file(market_id)
+        if not f.exists():
+            return None
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            return d["from"], d["to"], [Bar(*b) for b in d["bars"]]
+        except (ValueError, KeyError, TypeError):
+            return None
+
+    def save_bars(self, market_id, frm, to, bars):
+        f = self._cache_file(market_id)
+        f.parent.mkdir(exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"from": frm, "to": to, "bars": [list(b) for b in bars]}), encoding="utf-8")
+        os.replace(tmp, f)
 
 
 class Market:
@@ -160,7 +181,7 @@ class Bot:
         self._log(f"Vorlauf für {len(self.markets)} Märkte: Sessions {days[0]} bis {days[-1]}")
         for i, m in enumerate(self.markets.values(), 1):
             try:
-                bars = self.api.candles(m.id, start, end)
+                bars = self._warmup_bars(m, start, end)
             except RuntimeError as e:
                 self._log(f"{m.symbol}: Vorlauf fehlgeschlagen ({e})")
                 continue
@@ -175,6 +196,20 @@ class Bot:
         ready = [m for m in self.markets.values() if self.ready(m)]
         self._log(f"Vorlauf fertig: {len(ready)} von {len(self.markets)} Märkten haben genug Historie "
                   f"({self.model.lookback + 1} Sessions). Die übrigen werden übersprungen, bis genug Daten da sind.")
+
+    def _warmup_bars(self, m, start, end):
+        """Kerzen aus dem Zwischenspeicher; von Lighter wird nur der fehlende Rest geladen."""
+        cached = self.store.load_bars(m.id)
+        if cached and cached[0] <= start < cached[1]:
+            _, to, old = cached
+            new = self.api.candles(m.id, to, end) if to < end else []
+            merged = {b.t: b for b in old if start <= b.t < min(to, end)}
+            merged.update({b.t: b for b in new})
+            bars = [merged[t] for t in sorted(merged)]
+        else:
+            bars = self.api.candles(m.id, start, end)
+        self.store.save_bars(m.id, start, end, bars)
+        return bars
 
     # --- Ablauf -----------------------------------------------------------
 
